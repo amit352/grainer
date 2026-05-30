@@ -16,8 +16,14 @@ ENTRY = os.path.join(SPECPATH, "launcher.py")
 
 # ── Collect data + binaries from packages with rich resource trees ────────────
 st_datas,  st_bins,  st_hidden  = collect_all("streamlit")
+wv_datas,  wv_bins,  wv_hidden  = collect_all("webview")
+fa_datas,  fa_bins,  fa_hidden  = collect_all("fastapi")
+sl_datas,  sl_bins,  sl_hidden  = collect_all("starlette")
 alt_datas, alt_bins, alt_hidden = collect_all("altair")
 pl_datas,  pl_bins,  pl_hidden  = collect_all("plotly")
+hx_datas,  hx_bins,  hx_hidden  = collect_all("httpx")
+ay_datas,  ay_bins,  ay_hidden  = collect_all("anyio")
+gr_datas,  gr_bins,  gr_hidden  = collect_all("greenlet")
 
 # ── Application source files bundled verbatim ─────────────────────────────────
 app_datas = [
@@ -33,8 +39,8 @@ block_cipher = None
 a = Analysis(
     [ENTRY],
     pathex=[SRC],
-    binaries=st_bins + alt_bins + pl_bins,
-    datas=app_datas + st_datas + alt_datas + pl_datas,
+    binaries=st_bins + alt_bins + pl_bins + hx_bins + ay_bins + wv_bins + fa_bins + sl_bins + gr_bins,
+    datas=app_datas + st_datas + alt_datas + pl_datas + hx_datas + ay_datas + wv_datas + fa_datas + sl_datas + gr_datas,
     hiddenimports=[
         # uvicorn — all transports discovered at runtime via __import__
         "uvicorn.logging",
@@ -45,15 +51,20 @@ a = Analysis(
         "uvicorn.protocols.websockets.websockets_impl",
         "uvicorn.lifespan", "uvicorn.lifespan.on",
         # starlette / fastapi
+        "fastapi", "fastapi.routing", "fastapi.middleware",
         "starlette.routing", "starlette.middleware", "starlette.staticfiles",
+        *collect_submodules("fastapi"),
+        *collect_submodules("starlette"),
         # sqlalchemy async
         "sqlalchemy.dialects.sqlite", "sqlalchemy.dialects.sqlite.aiosqlite",
         "sqlalchemy.ext.asyncio",
         "greenlet", "aiosqlite",
-        # pydantic v2 deprecated shims still referenced at import time
+        # pydantic v2 + settings
         "pydantic.deprecated.class_validators",
         "pydantic.deprecated.config",
         "pydantic.deprecated.tools",
+        *collect_submodules("pydantic"),
+        *collect_submodules("pydantic_settings"),
         # cryptography + SSL (licensing)
         "cryptography", "cryptography.hazmat.primitives.asymmetric.ed25519",
         "certifi",
@@ -64,12 +75,20 @@ a = Analysis(
         # reportlab components used via string registry
         "reportlab.graphics.charts",
         "reportlab.graphics.widgets",
+        # httpx / httpcore / anyio
+        "httpcore", "httpcore._async", "httpcore._sync",
+        # pandas
+        "pandas", "pandas._libs.tslibs.np_datetime",
+        # PIL
+        "PIL", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont",
+        # webview
+        "webview", "webview.platforms.winforms",
         # misc
         "loguru", "multipart",
         *collect_submodules("scipy"),
-    ] + st_hidden + alt_hidden + pl_hidden,
+    ] + st_hidden + alt_hidden + pl_hidden + hx_hidden + ay_hidden + wv_hidden,
     hookspath=[],
-    runtime_hooks=[],
+    runtime_hooks=[os.path.join(SPECPATH, "hook_runtime.py")],
     excludes=["tkinter._test", "matplotlib", "IPython", "jupyter", "pytest"],
     cipher=block_cipher,
     noarchive=False,
@@ -88,7 +107,7 @@ exe = EXE(
     upx=True,
     # console=True  → shows a terminal window with live logs (handy for debugging)
     # console=False → headless; logs go to %APPDATA%\GrainScanner\logs\app.log
-    console=False,
+    console=True,
     icon=None,   # swap in: icon=r"assets\icon.ico"  when you have one
 )
 

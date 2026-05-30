@@ -16,7 +16,6 @@ import shutil
 import sys
 import threading
 import time
-import webbrowser
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -179,8 +178,9 @@ def _redirect_stdio(user_data: pathlib.Path) -> None:
 
 def _start_api() -> None:
     import uvicorn
+    from main import app  # noqa: PLC0415
     uvicorn.run(
-        "main:app",
+        app,
         host="127.0.0.1",
         port=8000,
         log_level="warning",
@@ -199,9 +199,24 @@ def _start_ui(app_dir: pathlib.Path) -> None:
         "--server.headless=true",
         "--browser.gatherUsageStats=false",
         "--browser.serverAddress=localhost",
+        "--server.enableCORS=false",
+        "--server.enableXsrfProtection=false",
         "--logger.level=warning",
     ]
-    sys.exit(stcli.main())
+    stcli.main()
+
+
+def _wait_for_streamlit(timeout: int = 30) -> bool:
+    """Poll localhost:8501 until Streamlit responds or timeout."""
+    import urllib.request
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen("http://localhost:8501", timeout=1)
+            return True
+        except Exception:
+            time.sleep(0.5)
+    return False
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -212,25 +227,57 @@ def main() -> None:
 
     _redirect_stdio(user_data)
 
-    # Ensure .env exists in user data dir (config reads it from cwd)
     env_src = app_dir / ".env.example"
     env_dst = user_data / ".env"
     if env_src.exists() and not env_dst.exists():
         shutil.copy(env_src, env_dst)
 
-    # cwd → user_data so SQLite, uploads, outputs use writable paths
     os.chdir(user_data)
-
-    # Module imports must find grain_scanner source
     sys.path.insert(0, str(app_dir))
 
     _check_license()
 
-    api_thread = threading.Thread(target=_start_api, daemon=True, name="fastapi")
-    api_thread.start()
+    # Patch signal.signal so Streamlit can run in a background thread.
+    # Streamlit tries to install signal handlers; this silently ignores
+    # those calls when not on the main thread.
+    import signal as _signal
+    _orig_signal = _signal.signal
+    def _safe_signal(sig, handler):
+        try:
+            return _orig_signal(sig, handler)
+        except (ValueError, OSError):
+            pass
+    _signal.signal = _safe_signal
 
-    time.sleep(2)
-    webbrowser.open("http://localhost:8501")
+    threading.Thread(target=_start_api,              daemon=True, name="fastapi").start()
+    threading.Thread(target=_start_ui, args=(app_dir,), daemon=True, name="streamlit").start()
+
+    import webview  # noqa: PLC0415
+
+    _LOADING = """<!DOCTYPE html><html><body style="margin:0;display:flex;
+    align-items:center;justify-content:center;height:100vh;background:#f0f2f6;
+    font-family:sans-serif"><div style="text-align:center">
+    <h2 style="color:#333">Starting Grain Scanner…</h2>
+    <p style="color:#666">Please wait a moment</p></div></body></html>"""
+
+    window = webview.create_window(
+        "Grain Scanner", html=_LOADING,
+        width=1400, height=900, min_size=(900, 600),
+    )
+
+    def _navigate():
+        if _wait_for_streamlit(timeout=60):
+            window.load_url("http://localhost:8501")
+        else:
+            window.load_html("""<html><body style="font-family:sans-serif;
+            display:flex;align-items:center;justify-content:center;height:100vh;
+            background:#f0f2f6"><div style="text-align:center;color:#c00">
+            <h2>Failed to start</h2>
+            <p>Check %APPDATA%\\GrainScanner\\logs\\app.log</p>
+            </div></body></html>""")
+
+    threading.Thread(target=_navigate, daemon=True).start()
+    webview.start()
 
     _start_ui(app_dir)
 

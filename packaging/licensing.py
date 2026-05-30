@@ -18,39 +18,34 @@ LICENSE_SERVER_URL = "https://grainer-production.up.railway.app"
 
 
 def get_machine_id() -> str:
-    """Return a stable 24-char hardware fingerprint for this machine."""
-    parts: list[str] = []
+    """Return a stable 24-char hardware fingerprint for this machine.
 
-    # MAC-address-based node id (stdlib, cross-platform)
-    import uuid
-    parts.append(str(uuid.getnode()))
+    Uses the Windows hardware UUID (from WMI) as the primary source — it is
+    stable across reboots, reinstalls, and app updates. Falls back to the
+    MAC-address node id if WMI is unavailable.
+    """
+    primary = ""
 
     if platform.system() == "Windows":
-        # Windows hardware UUID via WMI
+        # Hardware UUID from WMI — most stable identifier on Windows
         try:
             result = subprocess.run(
                 ["wmic", "csproduct", "get", "UUID"],
                 capture_output=True, text=True, timeout=5,
             )
             lines = [l.strip() for l in result.stdout.splitlines()
-                     if l.strip() and l.strip() != "UUID"]
+                     if l.strip() and l.strip() not in ("UUID", "")]
             if lines:
-                parts.append(lines[0])
+                primary = lines[0]
         except Exception:
             pass
 
-        # Volume serial of the system drive
-        try:
-            result = subprocess.run(
-                ["vol", "C:"],
-                capture_output=True, text=True, shell=True, timeout=5,
-            )
-            parts.append(result.stdout.strip())
-        except Exception:
-            pass
+    if not primary:
+        # Fallback: MAC-address-based node id (cross-platform stdlib)
+        import uuid
+        primary = str(uuid.getnode())
 
-    combined = "|".join(parts)
-    return hashlib.sha256(combined.encode()).hexdigest()[:24].upper()
+    return hashlib.sha256(primary.encode()).hexdigest()[:24].upper()
 
 
 def verify_license(machine_id: str, license_key: str) -> bool:
