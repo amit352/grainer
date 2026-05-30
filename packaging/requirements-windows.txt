@@ -29,5 +29,6 @@ Pillow>=11,<12
 
 cryptography>=42,<44
 certifi>=2024
+pywebview>=5.0,<6
 
 loguru>=0.7,<0.8

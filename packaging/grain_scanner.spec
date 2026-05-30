@@ -16,6 +16,7 @@ ENTRY = os.path.join(SPECPATH, "launcher.py")
 
 # ── Collect data + binaries from packages with rich resource trees ────────────
 st_datas,  st_bins,  st_hidden  = collect_all("streamlit")
+wv_datas,  wv_bins,  wv_hidden  = collect_all("webview")
 alt_datas, alt_bins, alt_hidden = collect_all("altair")
 pl_datas,  pl_bins,  pl_hidden  = collect_all("plotly")
 hx_datas,  hx_bins,  hx_hidden  = collect_all("httpx")
@@ -35,8 +36,8 @@ block_cipher = None
 a = Analysis(
     [ENTRY],
     pathex=[SRC],
-    binaries=st_bins + alt_bins + pl_bins + hx_bins + ay_bins,
-    datas=app_datas + st_datas + alt_datas + pl_datas + hx_datas + ay_datas,
+    binaries=st_bins + alt_bins + pl_bins + hx_bins + ay_bins + wv_bins,
+    datas=app_datas + st_datas + alt_datas + pl_datas + hx_datas + ay_datas + wv_datas,
     hiddenimports=[
         # uvicorn — all transports discovered at runtime via __import__
         "uvicorn.logging",
@@ -72,10 +73,12 @@ a = Analysis(
         "pandas", "pandas._libs.tslibs.np_datetime",
         # PIL
         "PIL", "PIL.Image", "PIL.ImageDraw", "PIL.ImageFont",
+        # webview
+        "webview", "webview.platforms.winforms",
         # misc
         "loguru", "multipart",
         *collect_submodules("scipy"),
-    ] + st_hidden + alt_hidden + pl_hidden + hx_hidden + ay_hidden,
+    ] + st_hidden + alt_hidden + pl_hidden + hx_hidden + ay_hidden + wv_hidden,
     hookspath=[],
     runtime_hooks=[],
     excludes=["tkinter._test", "matplotlib", "IPython", "jupyter", "pytest"],

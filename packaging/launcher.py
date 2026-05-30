@@ -16,7 +16,6 @@ import shutil
 import sys
 import threading
 import time
-import webbrowser
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -199,9 +198,24 @@ def _start_ui(app_dir: pathlib.Path) -> None:
         "--server.headless=true",
         "--browser.gatherUsageStats=false",
         "--browser.serverAddress=localhost",
+        "--server.enableCORS=false",
+        "--server.enableXsrfProtection=false",
         "--logger.level=warning",
     ]
-    sys.exit(stcli.main())
+    stcli.main()
+
+
+def _wait_for_streamlit(timeout: int = 30) -> bool:
+    """Poll localhost:8501 until Streamlit responds or timeout."""
+    import urllib.request
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen("http://localhost:8501", timeout=1)
+            return True
+        except Exception:
+            time.sleep(0.5)
+    return False
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -212,25 +226,30 @@ def main() -> None:
 
     _redirect_stdio(user_data)
 
-    # Ensure .env exists in user data dir (config reads it from cwd)
     env_src = app_dir / ".env.example"
     env_dst = user_data / ".env"
     if env_src.exists() and not env_dst.exists():
         shutil.copy(env_src, env_dst)
 
-    # cwd → user_data so SQLite, uploads, outputs use writable paths
     os.chdir(user_data)
-
-    # Module imports must find grain_scanner source
     sys.path.insert(0, str(app_dir))
 
     _check_license()
 
-    api_thread = threading.Thread(target=_start_api, daemon=True, name="fastapi")
-    api_thread.start()
+    threading.Thread(target=_start_api, daemon=True, name="fastapi").start()
+    threading.Thread(target=_start_ui, args=(app_dir,), daemon=True, name="streamlit").start()
 
-    time.sleep(2)
-    webbrowser.open("http://localhost:8501")
+    _wait_for_streamlit()
+
+    import webview  # noqa: PLC0415
+    webview.create_window(
+        "Grain Scanner",
+        "http://localhost:8501",
+        width=1400,
+        height=900,
+        min_size=(900, 600),
+    )
+    webview.start(gui="edgechromium")
 
     _start_ui(app_dir)
 
