@@ -30,31 +30,25 @@ if ($OriginalRoot -like "\\*") {
 
 $PackageDir = Join-Path $LocalRoot "packaging"
 
-# 0. Require x64 Python 3.12.
-#    opencv has no ARM64 Windows wheels, so we need x64 Python even on ARM Windows.
-#    x64 Python runs fine under Windows' built-in x64 emulation on ARM.
-Write-Host "`n[0/3] Checking x64 Python 3.12..." -ForegroundColor Yellow
+# 0. Find any usable Python (prefer x64 3.12, fall back to whatever is available)
+Write-Host "`n[0/3] Checking Python..." -ForegroundColor Yellow
 $pyexe = $null
-# "py -3.12-64" asks the py launcher specifically for the 64-bit x64 build
-foreach ($candidate in @("py -3.12-64", "py -3.12", "python")) {
+foreach ($candidate in @("py -3.12-64", "py -3.12", "py -3.13", "py", "python")) {
     try {
         $parts = $candidate.Split()
-        $ver  = & $parts[0] ($parts[1..99] + @("--version")) 2>&1
-        $arch = & $parts[0] ($parts[1..99] + @("-c", "import platform; print(platform.machine())")) 2>&1
-        if ($ver -match "3\.12" -and $arch -match "AMD64") { $pyexe = $candidate; break }
+        $ver = & $parts[0] ($parts[1..99] + @("--version")) 2>&1
+        if ($ver -match "Python 3\.") { $pyexe = $candidate; break }
     } catch {}
 }
 if (-not $pyexe) {
-    Write-Error @"
-x64 Python 3.12 not found.
-
-You are on Windows ARM (Parallels on Apple Silicon). Install the x64 build:
-    winget install Python.Python.3.12 --architecture x64
-
-Then close and reopen PowerShell and re-run this script.
-"@
+    Write-Error "Python not found. Install from https://python.org and re-run."
 }
-Write-Host "      Using: $pyexe"
+$arch = & $pyexe.Split()[0] ($pyexe.Split()[1..99] + @("-c","import platform; print(platform.machine())")) 2>&1
+Write-Host "      Using: $pyexe  ($arch)"
+if ($arch -notmatch "AMD64") {
+    Write-Host "      NOTE: ARM64 Python detected. opencv-python-headless will be skipped." -ForegroundColor Yellow
+    Write-Host "      Use GitHub Actions for a full production build." -ForegroundColor Yellow
+}
 
 function Invoke-Py {
     $parts = $pyexe.Split()
@@ -66,7 +60,14 @@ function Invoke-Py {
 Write-Host "`n[1/3] Installing dependencies..." -ForegroundColor Yellow
 Invoke-Py -m pip install --quiet --upgrade pip
 Invoke-Py -m pip install --quiet pyinstaller
-Invoke-Py -m pip install --quiet --prefer-binary -r "$PackageDir\requirements-windows.txt"
+if ($arch -notmatch "AMD64") {
+    # ARM64: install everything except opencv (no ARM64 wheels exist)
+    $tmpReq = "$env:TEMP\req_noopencv.txt"
+    Get-Content "$PackageDir\requirements-windows.txt" | Where-Object { $_ -notmatch "^opencv" } | Set-Content $tmpReq
+    Invoke-Py -m pip install --quiet --prefer-binary -r $tmpReq
+} else {
+    Invoke-Py -m pip install --quiet --prefer-binary -r "$PackageDir\requirements-windows.txt"
+}
 Write-Host "      Done."
 
 # 2. PyInstaller bundle

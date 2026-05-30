@@ -42,7 +42,7 @@ jobs:
         run: |
           python -m pip install --quiet --upgrade pip
           pip install --quiet pyinstaller
-          pip install --quiet -r grain_scanner/requirements.txt
+          pip install --quiet --prefer-binary -r packaging/requirements-windows.txt
 
       - name: Build bundle with PyInstaller
         shell: pwsh
