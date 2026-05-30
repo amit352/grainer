@@ -1,0 +1,84 @@
+name: Build Windows Installer
+
+on:
+  push:
+    tags: ["v*"]        # triggers on: git tag v1.0.0 && git push --tags
+  workflow_dispatch:    # manual trigger from the GitHub Actions UI
+    inputs:
+      version:
+        description: "App version (e.g. 1.0.0)"
+        required: false
+        default: "1.0.0"
+
+permissions:
+  contents: write       # needed to create GitHub Releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Resolve version string
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $v = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            $v = "${{ inputs.version }}"
+          }
+          echo "VERSION=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version $v"
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --quiet --upgrade pip
+          pip install --quiet pyinstaller
+          pip install --quiet -r grain_scanner/requirements.txt
+
+      - name: Build bundle with PyInstaller
+        shell: pwsh
+        working-directory: packaging
+        run: pyinstaller grain_scanner.spec --noconfirm
+
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        working-directory: packaging
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc /DMyAppVersion="${{ steps.ver.outputs.VERSION }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
+      - name: Upload installer as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrainScanner-Setup-${{ steps.ver.outputs.VERSION }}
+          path: packaging/Output/GrainScanner-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Grain Scanner v${{ steps.ver.outputs.VERSION }}"
+          files: packaging/Output/GrainScanner-Setup-*.exe
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            1. Download `GrainScanner-Setup-${{ steps.ver.outputs.VERSION }}.exe` below.
+            2. Run the installer — Windows may show a SmartScreen prompt; click **More info → Run anyway**.
+            3. Launch **Grain Scanner** from the Start Menu or Desktop.
+            4. On first launch you will see an **Activation** dialog.
+               Copy your **Machine ID** and send it to your vendor to receive a license key.
+            5. Paste the license key and click **Activate**.
+
+            > The license is tied to your machine and is valid for a single installation.

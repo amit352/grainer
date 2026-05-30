@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.env
+grain_scanner/data/
+grain_scanner/outputs/
+grain_scanner/logs/
+grain_scanner/uploads/
+grain_scanner/*.db
+*.db-shm
+*.db-wal
+.DS_Store
