@@ -239,16 +239,30 @@ def main() -> None:
     threading.Thread(target=_start_api, daemon=True, name="fastapi").start()
     threading.Thread(target=_start_ui, args=(app_dir,), daemon=True, name="streamlit").start()
 
-    _wait_for_streamlit()
-
     import webview  # noqa: PLC0415
-    webview.create_window(
-        "Grain Scanner",
-        "http://localhost:8501",
-        width=1400,
-        height=900,
-        min_size=(900, 600),
+
+    _LOADING = """<!DOCTYPE html><html><body style="margin:0;display:flex;
+    align-items:center;justify-content:center;height:100vh;background:#f0f2f6;
+    font-family:sans-serif"><div style="text-align:center">
+    <h2 style="color:#333">Starting Grain Scanner…</h2>
+    <p style="color:#666">Please wait a moment</p></div></body></html>"""
+
+    window = webview.create_window(
+        "Grain Scanner", html=_LOADING,
+        width=1400, height=900, min_size=(900, 600),
     )
+
+    def _navigate_when_ready():
+        if _wait_for_streamlit(timeout=60):
+            window.load_url("http://localhost:8501")
+        else:
+            window.load_html("""<!DOCTYPE html><html><body style="margin:0;display:flex;
+            align-items:center;justify-content:center;height:100vh;background:#f0f2f6;
+            font-family:sans-serif"><div style="text-align:center;color:#c00">
+            <h2>Failed to start</h2><p>Check logs at %APPDATA%\\GrainScanner\\logs\\app.log</p>
+            </div></body></html>""")
+
+    threading.Thread(target=_navigate_when_ready, daemon=True).start()
     webview.start(gui="edgechromium")
 
     _start_ui(app_dir)
