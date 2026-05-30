@@ -54,8 +54,9 @@ a = Analysis(
         "pydantic.deprecated.class_validators",
         "pydantic.deprecated.config",
         "pydantic.deprecated.tools",
-        # cryptography (licensing)
+        # cryptography + SSL (licensing)
         "cryptography", "cryptography.hazmat.primitives.asymmetric.ed25519",
+        "certifi",
         # scikit-image IO plugins
         "skimage.io._plugins.pil_plugin",
         "skimage.io._plugins.imageio_plugin",

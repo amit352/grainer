@@ -14,7 +14,7 @@ from pathlib import Path
 _PUBLIC_KEY_B64 = "XMrbv2YVIQXcIbjRgUbNrIxMsjnjc+dxQULvhfbpTpA="
 
 # Update this once your license server is deployed on Railway.
-LICENSE_SERVER_URL = "https://grain-scanner-license.up.railway.app"
+LICENSE_SERVER_URL = "https://grainer-production.up.railway.app"
 
 
 def get_machine_id() -> str:
@@ -100,9 +100,17 @@ def activate_with_coupon(machine_id: str, coupon_code: str) -> str:
 
     Raises ActivationError on any failure (invalid coupon, network error, etc.).
     """
+    import ssl
     import urllib.request
     import urllib.error
     import json
+
+    # Use certifi CA bundle so HTTPS works inside a PyInstaller bundle on Windows
+    try:
+        import certifi
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        ssl_ctx = ssl.create_default_context()
 
     payload = json.dumps({
         "machine_id": machine_id,
@@ -116,7 +124,7 @@ def activate_with_coupon(machine_id: str, coupon_code: str) -> str:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
             body = json.loads(resp.read())
             return body["license_key"]
     except urllib.error.HTTPError as exc:

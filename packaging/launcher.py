@@ -95,22 +95,25 @@ def _run_license_dialog(machine_id: str) -> None:
 
     # Status label
     status_var = tk.StringVar()
-    status_lbl = tk.Label(root, textvariable=status_var, font=("Segoe UI", 9),
-                          fg="red", wraplength=340)
-    status_lbl.pack(pady=(4, 0))
+    tk.Label(root, textvariable=status_var, font=("Segoe UI", 9),
+             fg="red", wraplength=340, height=2).pack(pady=(4, 0))
 
     # Progress bar (shown while contacting server)
     progress = ttk.Progressbar(root, mode="indeterminate", length=200)
+    progress.pack(pady=4)
+    progress.pack_forget()
 
     activated = [False]
 
     def _do_activate():
+        from tkinter import messagebox  # noqa: PLC0415
+
         coupon = coupon_var.get().strip()
         if not coupon:
             status_var.set("Please enter your coupon code.")
             return
 
-        status_var.set("")
+        status_var.set("Contacting license server...")
         activate_btn.config(state="disabled")
         progress.pack(pady=4)
         progress.start(10)
@@ -119,22 +122,24 @@ def _run_license_dialog(machine_id: str) -> None:
         def _worker():
             try:
                 key = activate_with_coupon(machine_id, coupon)
-                # Belt-and-suspenders: verify signature locally before saving
                 if not verify_license(machine_id, key):
                     raise ActivationError("Server returned an invalid license key.")
                 save_license(key)
                 activated[0] = True
                 root.after(0, root.destroy)
             except ActivationError as exc:
-                root.after(0, lambda: _on_error(str(exc)))
+                err = str(exc)
+                root.after(0, lambda: _on_error(err))
 
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_error(msg: str):
+        from tkinter import messagebox  # noqa: PLC0415
         progress.stop()
         progress.pack_forget()
         activate_btn.config(state="normal")
-        status_var.set(msg)
+        status_var.set("")
+        messagebox.showerror("Activation Failed", msg, parent=root)
 
     # Buttons
     btn_frame = tk.Frame(root)
@@ -189,6 +194,7 @@ def _start_ui(app_dir: pathlib.Path) -> None:
     sys.argv = [
         "streamlit", "run",
         str(app_dir / "streamlit_app.py"),
+        "--global.developmentMode=false",
         "--server.port=8501",
         "--server.headless=true",
         "--browser.gatherUsageStats=false",
